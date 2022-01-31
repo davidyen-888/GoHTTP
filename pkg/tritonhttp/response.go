@@ -1,8 +1,17 @@
 package tritonhttp
 
 import (
+	"bufio"
+	"fmt"
 	"io"
+	"os"
 )
+
+var statusText = map[int]string{
+	statusOK:         "OK",
+	statusBadRequest: "Bad Request",
+	statusNotFound:   "Not Found",
+}
 
 type Response struct {
 	StatusCode int    // e.g. 200
@@ -22,6 +31,13 @@ type Response struct {
 	FilePath string
 }
 
+// Response headers:
+// Date
+// Last-Modified (required only if return type is 200)
+// Content-Type (required only if return type is 200)
+// Content-Length (required only if return type is 200)
+// Connection: close (returned in response to a client “Connection: close” header.)
+
 // Write writes the res to the w.
 func (res *Response) Write(w io.Writer) error {
 	if err := res.WriteStatusLine(w); err != nil {
@@ -39,7 +55,16 @@ func (res *Response) Write(w io.Writer) error {
 // WriteStatusLine writes the status line of res to w, including the ending "\r\n".
 // For example, it could write "HTTP/1.1 200 OK\r\n".
 func (res *Response) WriteStatusLine(w io.Writer) error {
-	panic("todo")
+	bw := bufio.NewWriter(w)
+	statusLine := fmt.Sprintf("%v %v %v\r\n", res.Proto, res.StatusCode, statusText[res.StatusCode])
+	_, err := bw.WriteString(statusLine)
+	if err != nil {
+		return err
+	}
+	if err := bw.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // WriteSortedHeaders writes the headers of res to w, including the ending "\r\n".
@@ -47,11 +72,38 @@ func (res *Response) WriteStatusLine(w io.Writer) error {
 // For HTTP, there is no need to write headers in any particular order.
 // TritonHTTP requires to write in sorted order for the ease of testing.
 func (res *Response) WriteSortedHeaders(w io.Writer) error {
-	panic("todo")
+	bw := bufio.NewWriter(w)
+	for k, v := range res.Header {
+		headerLine := fmt.Sprintf("%v: %v\r\n", k, v)
+		_, err := bw.WriteString(headerLine)
+		if err != nil {
+			return err
+		}
+	}
+	if err := bw.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // WriteBody writes res' file content as the response body to w.
 // It doesn't write anything if there is no file to serve.
 func (res *Response) WriteBody(w io.Writer) error {
-	panic("todo")
+	bw := bufio.NewWriter(w)
+	if res.FilePath == "" {
+		return nil
+	}
+	f, err := os.Open(res.FilePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(bw, f)
+	if err != nil {
+		return err
+	}
+	if err := bw.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
