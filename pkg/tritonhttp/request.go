@@ -21,11 +21,6 @@ type Request struct {
 	Close bool   // determine from the "Connection" header
 }
 
-// Request headers:
-// Host (required, 400 client error if not present)
-// Connection (optional, if set to “close” then server should close connection with the client after sending response for this request)
-// You should gracefully handle any other valid request headers that the client sends. Any request headers not in the proper form (e.g., missing a colon), should signal a 400 error.
-
 // ReadRequest tries to read the next valid request from br.
 //
 // If it succeeds, it returns the valid request read. In this case,
@@ -36,65 +31,87 @@ type Request struct {
 // some bytes are received before the error occurs. This is useful to determine
 // the timeout with partial request received condition.
 func ReadRequest(br *bufio.Reader) (req *Request, bytesReceived bool, err error) {
+	req = &Request{
+		Header: make(map[string]string),
+	}
+
 	// Read start line
-	req = &Request{}
 	line, err := ReadLine(br)
+
 	if err != nil {
 		return nil, false, err
 	}
-	// Read headers
-	req.Header = make(map[string]string)
-	for {
-		line, err = ReadLine(br)
-		if err != nil {
-			return nil, true, err
-		}
-		if line == "" {
-			break
-		}
-		// Parse header
-		i := strings.IndexByte(line, ':')
-		if i < 0 {
-			return nil, true, fmt.Errorf("invalid header: %q", line)
-		}
-		key := strings.ToLower(line[:i])
-		value := strings.TrimSpace(line[i+1:])
-		req.Header[key] = value
-	}
-	// Check required headers
-
-	// Handle special headers
-
 	// Parse the request status line
-	req.Method, err = parseRequestLine(line)
+	req.Method, req.URL, req.Proto, req.Host, err = parseRequestLine(line)
 	if err != nil {
 		return nil, true, err
 	}
-
 	// Check for GET HTTP verb
 	if req.Method != "GET" {
 		return nil, true, fmt.Errorf("invalid method found: %v", req.Method)
 	}
 
+	// url should start with '/'
+	if req.URL[0] != '/' {
+		return nil, true, fmt.Errorf("invalid url found: %v", req.URL)
+	}
+
+	// protocol should be HTTP/1.1
+	if req.Proto != "HTTP/1.1" {
+		return nil, true, fmt.Errorf("invalid protocol found: %v", req.Proto)
+	}
+
+	// Read headers
+	req.Header = make(map[string]string)
 	for {
 		line, err := ReadLine(br)
-		if err != nil {
-			return nil, true, err
-		}
+		// fmt.Print("line: ", line, "\n")
 		if line == "" {
 			break
 		}
-		fmt.Printf("Read line from request: %v", line)
-	}
+		if err != nil {
+			fmt.Print(err.Error())
+			return req, true, err
+		}
 
-	fmt.Println("Request formed: ", req)
+		spilted := strings.Split(line, ":")
+		// seperate the header key and value
+		// key should not have spaces, only alphanumeric characters and numbers
+		IsLetter := func(r rune) bool {
+			return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		}
+		IsNumber := func(r rune) bool {
+			return (r >= '0' && r <= '9')
+		}
+		IsAlphanumeric := func(r rune) bool {
+			return IsLetter(r) || IsNumber(r) || r == '-'
+		}
+		// check if the key is valid
+		key := spilted[0]
+
+		if strings.IndexFunc(key, IsAlphanumeric) != -1 {
+			// check if the value is valid
+			value := strings.TrimLeft(spilted[1], " ")
+			key = CanonicalHeaderKey(key)
+			if key == "Host" {
+				req.Host = value
+			} else if key == "Connection" {
+				req.Close = value == "close"
+			} else {
+				req.Header[key] = value
+			}
+		} else {
+			return nil, true, fmt.Errorf("invalid header key found: %v", key)
+		}
+
+	}
 	return req, true, nil
 }
 
-func parseRequestLine(line string) (string, error) {
-	fields := strings.SplitN(line, " ", 2)
-	if len(fields) != 2 {
-		return "", fmt.Errorf("could not parse request line, got fields: %v", fields)
+func parseRequestLine(line string) (string, string, string, string, error) {
+	fields := strings.SplitN(line, " ", 3)
+	if len(fields) != 3 {
+		return "", "", "", "", fmt.Errorf("invalid request line: %v", line)
 	}
-	return fields[0], nil
+	return fields[0], fields[1], fields[2], "", nil
 }

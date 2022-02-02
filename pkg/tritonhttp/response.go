@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 )
 
 var statusText = map[int]string{
-	statusOK:         "OK",
-	statusBadRequest: "Bad Request",
-	statusNotFound:   "Not Found",
+	200: "OK",
+	400: "Bad Request",
+	404: "Not Found",
 }
 
 type Response struct {
@@ -30,13 +31,6 @@ type Response struct {
 	// It could be "", which means there is no file to serve.
 	FilePath string
 }
-
-// Response headers:
-// Date
-// Last-Modified (required only if return type is 200)
-// Content-Type (required only if return type is 200)
-// Content-Length (required only if return type is 200)
-// Connection: close (returned in response to a client “Connection: close” header.)
 
 // Write writes the res to the w.
 func (res *Response) Write(w io.Writer) error {
@@ -73,13 +67,24 @@ func (res *Response) WriteStatusLine(w io.Writer) error {
 // TritonHTTP requires to write in sorted order for the ease of testing.
 func (res *Response) WriteSortedHeaders(w io.Writer) error {
 	bw := bufio.NewWriter(w)
-	for k, v := range res.Header {
-		headerLine := fmt.Sprintf("%v: %v\r\n", k, v)
-		_, err := bw.WriteString(headerLine)
+	sortedKeys := make([]string, 0, len(res.Header))
+	for k := range res.Header {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+	fmt.Printf("sortedkey: %v\r\n", sortedKeys)
+	for _, k := range sortedKeys {
+		v, ok := res.Header[k]
+		if !ok {
+			continue
+		}
+		_, err := bw.WriteString(fmt.Sprintf("%v: %v\r\n", k, v))
+		fmt.Printf("%v: %v\r\n", k, v)
 		if err != nil {
 			return err
 		}
 	}
+	bw.WriteString("\r\n")
 	if err := bw.Flush(); err != nil {
 		return err
 	}

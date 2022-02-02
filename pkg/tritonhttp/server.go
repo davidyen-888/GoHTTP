@@ -8,6 +8,9 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -74,6 +77,8 @@ func (s *Server) ValidateServerSetup() error {
 
 // HandleConnection reads requests from the accepted conn and handles them.
 func (s *Server) HandleConnection(conn net.Conn) {
+	fmt.Printf("Handling connection from %v\n", conn.RemoteAddr())
+	defer conn.Close()
 	br := bufio.NewReader(conn)
 
 	for {
@@ -84,7 +89,7 @@ func (s *Server) HandleConnection(conn net.Conn) {
 			return
 		}
 		// Read the next request
-		req, _, err := ReadRequest(br)
+		req, bytesReceived, err := ReadRequest(br)
 
 		// Handle errors
 		// 1. Client closed connection => io.EOF error
@@ -93,26 +98,36 @@ func (s *Server) HandleConnection(conn net.Conn) {
 			_ = conn.Close()
 			return
 		}
-		// 2. Timeout from the server => net.Error error
-		if err, ok := err.(net.Error); ok && err.Timeout() {
-			fmt.Printf("Connection to %v timed out", conn.RemoteAddr())
+		// 2. Timeout from the server and no partial request is received.=> net.Error error
+		// TODO: require more work in proj3
+		if err, ok := err.(net.Error); ok && err.Timeout() && req == nil {
+			fmt.Printf("Timeout from the server and no partial request is received: %v", conn.RemoteAddr())
+			if bytesReceived {
+				res := &Response{
+					Header: make(map[string]string),
+				}
+				res.HandleBadRequest()
+				res.Write(conn)
+			}
 			_ = conn.Close()
 			return
 		}
-		// 3. Malformed/invalid request => error
-		// Handle the request which is not a GET and immediately close the connection and return
+		// 3. Handle for 400 response, close connection and return
 		if err != nil {
-			fmt.Printf("Handling bad request for error: %v", err)
-			res := &Response{}
+			fmt.Printf("Error in reading request: %v", err)
+			res := &Response{
+				Header: make(map[string]string),
+			}
 			res.HandleBadRequest()
-			_ = res.Write(conn)
+			res.Write(conn)
 			_ = conn.Close()
 			return
 		}
-		// 4. Handle the happy path
+		// 4. Handle the happy path (200 OK)
 		fmt.Printf("Handling good request for %v", req.URL)
 		// Handle good request
 		res := s.HandleGoodRequest(req)
+		fmt.Printf("filepath %s\n", res.FilePath)
 		// Write the response
 		if err := res.Write(conn); err != nil {
 			fmt.Printf("Failed to write response: %v", err)
@@ -127,17 +142,63 @@ func (s *Server) HandleConnection(conn net.Conn) {
 
 // HandleGoodRequest handles the valid req and generates the corresponding res.
 func (s *Server) HandleGoodRequest(req *Request) (res *Response) {
-	res = &Response{}
+	res = &Response{
+		Header: make(map[string]string),
+	}
 	res.Proto = responseProto
 	res.StatusCode = statusOK
-	res.FilePath = path.Join(s.DocRoot, req.URL) // TODO: handle path
-	return res
+	url := filepath.Clean(req.URL)
+	res.FilePath = path.Join(s.DocRoot, url) // TODO: handle path
 	// Hint: use the other methods below
+
+	// Handle for 404 response (a valid request is received, and the requested file cannot be found or is not under the doc root.)
+	// Check if file exist
+	path, err := os.Stat(res.FilePath)
+	if err != nil {
+		fmt.Printf("Error in checking if file exists: %v\n", err)
+		fmt.Printf("path: %v\n", path)
+		res.FilePath = ""
+		res.HandleNotFound(req)
+		return res
+		// Check if it's a folder, if so with /, add index.html, if not , return file not found
+	} else if path.IsDir() {
+		fmt.Printf("File is a directory: %v", res.FilePath)
+		if strings.HasSuffix(url, "/") {
+			res.FilePath = filepath.Join(res.FilePath, "index.html")
+		} else {
+			// file not found
+			res.FilePath = ""
+			res.HandleNotFound(req)
+			return res
+		}
+	}
+
+	// Check if file is outside root
+	if !strings.HasPrefix(res.FilePath, s.DocRoot) {
+		fmt.Printf("File is outside root: %v", res.FilePath)
+		res.FilePath = ""
+		res.HandleNotFound(req)
+		return res
+	}
+	// HandleOk
+	res.HandleOK(req, res.FilePath)
+	return res
 }
 
 // HandleOK prepares res to be a 200 OK response
 // ready to be written back to client.
 func (res *Response) HandleOK(req *Request, path string) {
+	stat, err := os.Stat(path)
+	res.Header["Date"] = FormatTime((time.Now()))
+	res.Header["Last-Modified"] = FormatTime(stat.ModTime())
+	res.Header["Content-Type"] = MIMETypeByExtension(filepath.Ext(path))
+	res.Header["Content-Length"] = strconv.Itoa(int(stat.Size()))
+	if req.Close {
+		res.Header["Connection"] = "close"
+	}
+	if err != nil {
+		res.StatusCode = statusNotFound
+	}
 	res.Proto = responseProto
 	res.StatusCode = statusOK
 	res.FilePath = path
@@ -146,15 +207,20 @@ func (res *Response) HandleOK(req *Request, path string) {
 // HandleBadRequest prepares res to be a 400 Bad Request response
 // ready to be written back to client.
 func (res *Response) HandleBadRequest() {
+	res.Header["Date"] = FormatTime((time.Now()))
 	res.Proto = responseProto
 	res.StatusCode = statusBadRequest
-	res.FilePath = "" // TODO: handle path
+	res.FilePath = ""
+	res.Header["Connection"] = "close"
 }
 
 // HandleNotFound prepares res to be a 404 Not Found response
 // ready to be written back to client.
 func (res *Response) HandleNotFound(req *Request) {
+	res.Header["Date"] = FormatTime((time.Now()))
 	res.Proto = responseProto
 	res.StatusCode = statusNotFound
-	res.FilePath = "" // TODO: handle path
+	if req.Close {
+		res.Header["Connection"] = "close"
+	}
 }
