@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"cse224/proj3/pkg/tritonhttp"
+	gohttp "cse224/proj3/pkg/gohttp"
 )
 
 type ResponseChecker struct {
@@ -31,7 +31,7 @@ var statusLineWant = map[int]string{
 
 func (rc *ResponseChecker) Check(br *bufio.Reader) error {
 	// Check status line
-	line, err := tritonhttp.ReadLine(br)
+	line, err := gohttp.ReadLine(br)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func checkStatusLine(line string, statusCode int) error {
 
 func checkHeaders(br *bufio.Reader, specs []HeaderSpec) error {
 	for _, spec := range specs {
-		line, err := tritonhttp.ReadLine(br)
+		line, err := gohttp.ReadLine(br)
 		if err != nil {
 			return err
 		}
@@ -117,7 +117,7 @@ func checkHeaders(br *bufio.Reader, specs []HeaderSpec) error {
 		}
 	}
 	// Check header end
-	line, err := tritonhttp.ReadLine(br)
+	line, err := gohttp.ReadLine(br)
 	if err != nil {
 		return err
 	}

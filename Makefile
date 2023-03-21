@@ -7,8 +7,8 @@ install:
 run-default:
 	go run cmd/httpd/main.go -use_default -port 8080 -doc_root test/testdata/htdocs
 
-.PHONY: run-tritonhttp
-run-tritonhttp:
+.PHONY: run-gohttp
+run-gohttp:
 	go run cmd/httpd/main.go -port 8080 -doc_root test/testdata/htdocs
 
 .PHONY: unit-test

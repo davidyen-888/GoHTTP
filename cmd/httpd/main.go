@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"cse224/proj3/pkg/tritonhttp"
+	"cse224/proj3/pkg/gohttp"
 )
 
 func main() {
@@ -33,9 +33,9 @@ func main() {
 		}
 		log.Fatal(s.ListenAndServe())
 	} else {
-		log.Printf("Starting TritonHTTP server")
+		log.Printf("Starting GoHTTP server")
 		log.Printf("You can browse the website at http://localhost:%v/", *port)
-		s := &tritonhttp.Server{
+		s := &gohttp.Server{
 			Addr:    addr,
 			DocRoot: *docRoot,
 		}

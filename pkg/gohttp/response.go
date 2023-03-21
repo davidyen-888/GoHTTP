@@ -1,4 +1,4 @@
-package tritonhttp
+package gohttp
 
 import (
 	"bufio"
@@ -64,7 +64,7 @@ func (res *Response) WriteStatusLine(w io.Writer) error {
 // WriteSortedHeaders writes the headers of res to w, including the ending "\r\n".
 // For example, it could write "Connection: close\r\nDate: foobar\r\n\r\n".
 // For HTTP, there is no need to write headers in any particular order.
-// TritonHTTP requires to write in sorted order for the ease of testing.
+// GoHTTP requires to write in sorted order for the ease of testing.
 func (res *Response) WriteSortedHeaders(w io.Writer) error {
 	bw := bufio.NewWriter(w)
 	sortedKeys := make([]string, 0, len(res.Header))

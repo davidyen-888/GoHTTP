@@ -1,4 +1,4 @@
-package tritonhttp
+package gohttp
 
 import (
 	"io/ioutil"
