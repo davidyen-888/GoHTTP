@@ -17,7 +17,13 @@ This section describes a minimal subset (which also differs in details) of the H
 
 GoHTTP is a client/server protocol that is layered on top of the reliable stream-oriented transport protocol TCP. Clients send request messages to the server, and servers reply with response messages. In its most basic form, a single GoHTTP-level request/response exchange happens over a single, dedicated TCP connection. The client first connects to the server, and then sends the GoHTTP request message. The server replies with a GoHTTP response, and then closes the connection:
 
+![image](https://user-images.githubusercontent.com/61106644/226735323-e6e968b2-feeb-4277-bc57-734ee8aa8585.png)
+
+
 Repeatedly setting up and tearing down TCP connections reduces overall network throughput and efficiency, and so GoHTTP has a mechanism whereby a client can reuse a TCP connection to a given server (HTTP **persistent connection**). The idea is that the client opens a TCP connection to the server, issues a GoHTTP request, gets a GoHTTP response, and then issues another GoHTTP request on the already open outbound part of the connection. The server replies with the response, and this can continue through multiple request/response interactions. The client signals the last request by setting a “Connection: close” header, described below. The server indicates that it will not handle additional requests by setting the “Connection: close” header in the response. Note that the client can issue more than one GoHTTP request without necessarily waiting for full HTTP replies to be returned (HTTP **pipelining**).
+
+![image1](https://user-images.githubusercontent.com/61106644/226735371-c70f90df-5eac-474f-a6e3-f408f7ccfc9d.png)
+
 
 To support clients that do not properly set the “Connection: close” header, the server must implement a **timeout** mechanism to know when it should close the connection (otherwise it might just wait forever). For this project, you should set a **server timeout of 5 seconds**. If this timeout occurs and the client has sent part of a request, but not a full request, then the server should reply back with a 400 client error (described below). If this timeout occurs and the client has not started sending any part of a new request, the server should simply close the connection.
 
