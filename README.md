@@ -4,6 +4,15 @@
 
 This section describes a minimal subset (which also differs in details) of the HTTP/1.1 protocol specification. Portions of this specification are [courtesy of James Marshall](https://www.jmarshall.com/easy/http/), used with permission from the author.
 
+## Functionality
+
+- A web server listens for connections on a socket bound to a specific port on a host machine
+- Clients connect to the socket and use the GoHTTP protocol to retrieve files from the server
+- The server reads data from the client and uses framing and parsing techniques to interpret one or more requests (if the client is using pipelined requests)
+- Each time the server reads in a full request, it services that request and sends a response back to the client
+- After sending back one or more responses, the server will either close the connection if instructed to do so by the client via the “Connection: close” header, or after an appropriate timeout occurs
+- The web server should be implemented in a concurrent manner so that it can process multiple client requests overlapping in time.
+
 ## Client/Server Protocol
 
 GoHTTP is a client/server protocol that is layered on top of the reliable stream-oriented transport protocol TCP. Clients send request messages to the server, and servers reply with response messages. In its most basic form, a single GoHTTP-level request/response exchange happens over a single, dedicated TCP connection. The client first connects to the server, and then sends the GoHTTP request message. The server replies with a GoHTTP response, and then closes the connection:
